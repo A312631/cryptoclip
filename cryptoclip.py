@@ -84,7 +84,7 @@ def decrypt(privkey_file):
 	print("message successfully decrypted - the result has been copied to your clipboard")
 
 def main():
-	parser = argparse.ArgumentParser() # create a standard ArgumentParser
+	parser = argparse.ArgumentParser(add_help = False) # create a standard ArgumentParser
 	parser.add_argument("mode", choices = ["generate", "encrypt", "decrypt"]) # three mode choices
 	parser.add_argument("key") # required key argument
 
