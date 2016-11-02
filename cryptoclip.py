@@ -5,7 +5,7 @@ import os
 
 import pyperclip
 
-from combocrypt import combocrypt
+import combocrypt
 
 PUBLIC_KEY_EXTENSION = ".pubkey"
 PRIVATE_KEY_EXTENSION = ".privkey"
@@ -96,4 +96,5 @@ def main():
 	"decrypt": decrypt
 	}[args.mode](args.key) # run the mode provided by the user, passing the 'key' argument to the function
 
-main()
+if __name__ == "__main__":
+	main()
