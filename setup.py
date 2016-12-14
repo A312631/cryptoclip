@@ -10,7 +10,7 @@ with open(path.join(here, "README.rst"), encoding = "utf-8") as f:
 
 setup(
 	name = "cryptoclip",
-	version = "1.0.0",
+	version = "1.1.0",
 	description = "Command-line implementation of ComboCrypt for clipboard data",
 	long_description = long_description,
 	url = "https://github.com/samrankin1/cryptoclip",
@@ -31,7 +31,7 @@ setup(
 	],
 	keywords = "encryption public-key rsa aes clipboard",
 	py_modules = ["cryptoclip"],
-	install_requires = ["combocrypt", "pyperclip"],
+	install_requires = ["combocrypt>=2.0.0", "pyperclip"],
 	entry_points = {
 		"console_scripts": ["cryptoclip = cryptoclip:main"]
     }
