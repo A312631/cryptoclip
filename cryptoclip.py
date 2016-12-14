@@ -3,9 +3,12 @@ import textwrap
 import base64
 import os
 
-import pyperclip
+from datetime import datetime
 
+import pyperclip
 import combocrypt
+
+RSA_KEYSIZE = 4096
 
 PUBLIC_KEY_EXTENSION = ".pubkey"
 PRIVATE_KEY_EXTENSION = ".privkey"
@@ -13,27 +16,31 @@ PRIVATE_KEY_EXTENSION = ".privkey"
 HEADER = "[BEGIN CRYPTOCLIP MESSAGE]"
 FOOTER = "[END CRYPTOCLIP MESSAGE]"
 
-def format_output(rsa_encrypted_aes_key, aes_encrypted_data):
+def format_output(combocrypt_data):
 	"""Format the output of combo_encrypt_data so that it may be easily copied and pasted for transit"""
-	rsa_encrypted_aes_key_base64 = base64.b64encode(rsa_encrypted_aes_key).decode("ascii") # encode both parts of the message with base64
-	aes_encrypted_data_base64 = base64.b64encode(aes_encrypted_data).decode("ascii")
-
-	body = textwrap.fill((rsa_encrypted_aes_key_base64 + ";" + aes_encrypted_data_base64), 64) # separate the halves with a semicolon, wrap the body so that each line is 64 characters long at max
+	parts_base64 = [base64.b64encode(part).decode("ascii") for part in combocrypt_data]
+	parts_combined = ";".join(parts_base64)
+	body = textwrap.fill(parts_combined, 64) # separate the halves with a semicolon, wrap the body so that each line is 64 characters long at max
 
 	return (HEADER + '\n' + body + '\n' + FOOTER) # combine the header, body, and footer
 
+def process_input(cryptoclip_block):
+	body = cryptoclip_block[len(HEADER):-len(FOOTER)]
+	parts_base64 = body.split(";")
+	parts = [base64.b64decode(part) for part in parts_base64]
+	return tuple(parts)
+
 def generate(keypair_name):
 	"""Generate a new RSA keypair, storing the keys in the given file destination"""
-	print("generating " + str(combocrypt.RSA_KEYSIZE) + "-bit RSA keypair...")
-	private_key = combocrypt.rsa_random_keypair() # generate a new RSA keypair
-	public_key = private_key.publickey()
+	print("generating " + str(RSA_KEYSIZE) + "-bit RSA keypair...")
+	public_key, private_key = combocrypt.generate_rsa_keypair(key_size = RSA_KEYSIZE) # generate a new RSA keypair
 
-	privkey_file = keypair_name + PRIVATE_KEY_EXTENSION # add the extensions to the files
-	pubkey_file = keypair_name + PUBLIC_KEY_EXTENSION
+	pubkey_file = keypair_name + PUBLIC_KEY_EXTENSION # add the extensions to the files
+	privkey_file = keypair_name + PRIVATE_KEY_EXTENSION
 
-	print("writing keys to '" + privkey_file + "' and '" + pubkey_file + "'...")
-	combocrypt.save_rsa_key(private_key, privkey_file) # write the keys to their files
-	combocrypt.save_rsa_key(public_key, pubkey_file)
+	print("writing keys to '" + pubkey_file + "' and '" + privkey_file + "'...")
+	combocrypt.save_rsa_public_key(public_key, pubkey_file) # write the keys to their files
+	combocrypt.save_rsa_private_key(private_key, privkey_file)
 
 	print("done!")
 	print()
@@ -51,10 +58,10 @@ def encrypt(pubkey_file):
 	if "." not in key_file_name: # if the key file provided has no extension
 		pubkey_file += PUBLIC_KEY_EXTENSION # assume public key extension
 
-	public_key = combocrypt.load_rsa_key(pubkey_file) # TODO: catch exceptions
+	public_key = combocrypt.load_rsa_public_key(pubkey_file) # TODO: catch exceptions
 
-	rsa_encrypted_aes_key, aes_encrypted_data = combocrypt.combo_encrypt_data(clipboard.encode("utf-8"), public_key) # encode the clipboard contents and encrypt the data with the public key
-	result = format_output(rsa_encrypted_aes_key, aes_encrypted_data) # format the output for transit
+	combocrypt_data = combocrypt.combo_encrypt_data(clipboard.encode("utf-8"), public_key) # encode the clipboard contents and encrypt the data with the public key
+	result = format_output(combocrypt_data) # format the output for transit
 
 	pyperclip.copy(result) # copy the result to the clipboard
 	print("message successfully encrypted - the result has been copied to your clipboard")
@@ -64,24 +71,27 @@ def decrypt(privkey_file):
 	clipboard = pyperclip.paste() # get the current clipboard
 
 	if not (clipboard.startswith(HEADER) and clipboard.endswith(FOOTER)): # if the message doesn't start with the standard header and end with the standard footer
-		print("clipboard does not contain a valid combocrypt message") # break
+		print("clipboard does not contain a valid cryptoclip message") # break
 		return
 
 	key_file_name = os.path.basename(privkey_file) # get the base name of the file provided by the user
 	if "." not in key_file_name: # if the key file provided has no extension
 		privkey_file += PRIVATE_KEY_EXTENSION # assume private key extension
 
-	body = clipboard[len(HEADER):-len(FOOTER)] # remove the header and footer from the message
+	combocrypt_data = process_input(clipboard)
 
-	rsa_encrypted_aes_key_base64, aes_encrypted_data_base64 = tuple(body.split(";")) # the message is split by a semicolon between two parts
-	rsa_encrypted_aes_key = base64.b64decode(rsa_encrypted_aes_key_base64) # decode the parts
-	aes_encrypted_data = base64.b64decode(aes_encrypted_data_base64)
+	private_key = combocrypt.load_rsa_private_key(privkey_file) # TODO: catch exceptions, move this before message processing
+	message, timestamp = combocrypt.combo_decrypt_data(*combocrypt_data, private_key)
 
-	private_key = combocrypt.load_rsa_key(privkey_file) # TODO: catch exceptions, move this before message processing
-	decrypted = combocrypt.combo_decrypt_data(rsa_encrypted_aes_key, aes_encrypted_data, private_key).decode("utf-8") # decrypt and decode the data
-
-	pyperclip.copy(decrypted) # copy the result to the clipboard
+	pyperclip.copy(message.decode("utf-8")) # copy the result to the clipboard
 	print("message successfully decrypted - the result has been copied to your clipboard")
+	print()
+
+	message_age = (datetime.utcnow() - datetime.fromtimestamp(timestamp)) # subtract the UTC timestamps to get the age of the message
+	days_old = message_age.days
+	hours_old, remainder = divmod(message_age.seconds, (60 * 60)) # divide seconds by the number of seconds in an hour
+	minutes_old, seconds_old = divmod(remainder, 60) # divide the remainder by the number of seconds in a minute
+	print("INFO: this message is timestamped {} days, {} hours, {} minutes, and {} seconds old".format(days_old, hours_old, minutes_old, seconds_old)) # TODO: formatting
 
 def main():
 	parser = argparse.ArgumentParser(add_help = False) # create a standard ArgumentParser
