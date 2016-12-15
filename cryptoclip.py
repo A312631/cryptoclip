@@ -3,7 +3,7 @@ import textwrap
 import base64
 import os
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pyperclip
 import combocrypt
@@ -87,7 +87,7 @@ def decrypt(privkey_file):
 	print("message successfully decrypted - the result has been copied to your clipboard")
 	print()
 
-	message_age = (datetime.utcnow() - datetime.fromtimestamp(timestamp)) # subtract the UTC timestamps to get the age of the message
+	message_age = (datetime.now(timezone.utc) - datetime.fromtimestamp(timestamp, tz = timezone.utc)) # subtract the UTC timestamps to get the age of the message
 	days_old = message_age.days
 	hours_old, remainder = divmod(message_age.seconds, (60 * 60)) # divide seconds by the number of seconds in an hour
 	minutes_old, seconds_old = divmod(remainder, 60) # divide the remainder by the number of seconds in a minute
